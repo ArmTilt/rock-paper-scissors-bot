@@ -14,12 +14,12 @@ COUNTER_MOVES = {
 }
 
 
-def _angle_at_pip(landmarks, mcp_idx, pip_idx, tip_idx):
+def _angle_at_pip(landmarks, mcp_idx, pip_idx, distal_idx):
     mcp = np.array([landmarks[mcp_idx].x, landmarks[mcp_idx].y, landmarks[mcp_idx].z])
     pip = np.array([landmarks[pip_idx].x, landmarks[pip_idx].y, landmarks[pip_idx].z])
-    tip = np.array([landmarks[tip_idx].x, landmarks[tip_idx].y, landmarks[tip_idx].z])
+    distal = np.array([landmarks[distal_idx].x, landmarks[distal_idx].y, landmarks[distal_idx].z])
     v1 = pip - mcp
-    v2 = tip - pip
+    v2 = distal - pip
     denom = np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6
     cos_a = np.dot(v1, v2) / denom
     return float(np.degrees(np.arccos(np.clip(cos_a, -1.0, 1.0))))
@@ -32,7 +32,10 @@ def classify_gesture(landmarks):
         angle = _angle_at_pip(landmarks, mcp, pip, tip)
         extended[name] = angle < 90
 
-    i, m, r, p = (extended[f] for f in ('index', 'middle', 'ring', 'pinky'))
+    i = extended['index']
+    m = extended['middle']
+    r = extended['ring']
+    p = extended['pinky']
 
     if not i and not m and not r and not p:
         return 'rock', 0.95
@@ -59,6 +62,18 @@ class GestureDetector:
             min_detection_confidence=0.7,
             min_tracking_confidence=0.7,
         )
+
+    def close(self):
+        """Close the MediaPipe Hands instance."""
+        self._hands.close()
+
+    def __enter__(self):
+        """Support using GestureDetector as a context manager."""
+        return self
+
+    def __exit__(self, *_):
+        """Close resources when exiting the context manager."""
+        self.close()
 
     def process(self, bgr_frame):
         """
