@@ -1,4 +1,7 @@
 import numpy as np
+import os
+import time
+import urllib.request
 
 FINGER_INDICES = {
     'index':  (5, 6, 8),
@@ -12,6 +15,29 @@ COUNTER_MOVES = {
     'paper': 'scissors',
     'scissors': 'rock',
 }
+
+# Hand skeleton connections for drawing (landmark index pairs)
+_HAND_CONNECTIONS = [
+    (0,1),(1,2),(2,3),(3,4),
+    (0,5),(5,6),(6,7),(7,8),
+    (0,9),(9,10),(10,11),(11,12),
+    (0,13),(13,14),(14,15),(15,16),
+    (0,17),(17,18),(18,19),(19,20),
+    (5,9),(9,13),(13,17),
+]
+
+_MODEL_URL = (
+    'https://storage.googleapis.com/mediapipe-models/'
+    'hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
+)
+_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hand_landmarker.task')
+
+
+def _ensure_model():
+    if not os.path.exists(_MODEL_PATH):
+        print('Downloading hand landmarker model (~30 MB) on first run...')
+        urllib.request.urlretrieve(_MODEL_URL, _MODEL_PATH)
+        print('Model ready.')
 
 
 def _angle_at_pip(landmarks, mcp_idx, pip_idx, distal_idx):
@@ -46,33 +72,46 @@ def classify_gesture(landmarks):
     return None, 0.0
 
 
+def _draw_hand(frame, landmarks):
+    """Draw hand skeleton on frame using OpenCV directly."""
+    import cv2
+    h, w = frame.shape[:2]
+    pts = [(int(lm.x * w), int(lm.y * h)) for lm in landmarks]
+    for a, b in _HAND_CONNECTIONS:
+        cv2.line(frame, pts[a], pts[b], (0, 200, 100), 2)
+    for pt in pts:
+        cv2.circle(frame, pt, 5, (255, 80, 80), -1)
+
+
 class GestureDetector:
     def __init__(self):
-        # Defer heavy imports to instantiation time so the pure functions
-        # (_angle_at_pip, classify_gesture) are importable without triggering
-        # mediapipe's module-level initialisation.
         import cv2 as _cv2
         import mediapipe as _mp
+        from mediapipe.tasks import python as _mptasks
+        from mediapipe.tasks.python import vision as _vision
+
+        _ensure_model()
+
         self._cv2 = _cv2
-        self._mp_hands = _mp.solutions.hands
-        self._mp_draw = _mp.solutions.drawing_utils
-        self._hands = self._mp_hands.Hands(
-            static_image_mode=False,
-            max_num_hands=1,
-            min_detection_confidence=0.7,
+        self._mp = _mp
+        options = _vision.HandLandmarkerOptions(
+            base_options=_mptasks.BaseOptions(model_asset_path=_MODEL_PATH),
+            running_mode=_vision.RunningMode.VIDEO,
+            num_hands=1,
+            min_hand_detection_confidence=0.7,
+            min_hand_presence_confidence=0.7,
             min_tracking_confidence=0.7,
         )
+        self._landmarker = _vision.HandLandmarker.create_from_options(options)
+        self._start_ms = int(time.time() * 1000)
 
     def close(self):
-        """Close the MediaPipe Hands instance."""
-        self._hands.close()
+        self._landmarker.close()
 
     def __enter__(self):
-        """Support using GestureDetector as a context manager."""
         return self
 
     def __exit__(self, *_):
-        """Close resources when exiting the context manager."""
         self.close()
 
     def process(self, bgr_frame):
@@ -82,13 +121,16 @@ class GestureDetector:
         gesture is None when hand is detected but pose is ambiguous.
         """
         rgb = self._cv2.cvtColor(bgr_frame, self._cv2.COLOR_BGR2RGB)
-        result = self._hands.process(rgb)
+        mp_image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
+        timestamp_ms = int(time.time() * 1000) - self._start_ms
+
+        result = self._landmarker.detect_for_video(mp_image, timestamp_ms)
         annotated = bgr_frame.copy()
 
-        if result.multi_hand_landmarks:
-            hand = result.multi_hand_landmarks[0]
-            self._mp_draw.draw_landmarks(annotated, hand, self._mp_hands.HAND_CONNECTIONS)
-            gesture, confidence = classify_gesture(hand.landmark)
-            return hand.landmark, gesture, confidence, annotated
+        if result.hand_landmarks:
+            landmarks = result.hand_landmarks[0]
+            _draw_hand(annotated, landmarks)
+            gesture, confidence = classify_gesture(landmarks)
+            return landmarks, gesture, confidence, annotated
 
         return None, None, 0.0, annotated
