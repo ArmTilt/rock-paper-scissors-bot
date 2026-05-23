@@ -1,6 +1,5 @@
 import os
 import pygame
-import numpy as np
 import cv2
 from PIL import Image, ImageDraw, ImageFont
 from game import State
@@ -21,15 +20,15 @@ SHOOT_COLOR = (255, 80, 80)
 EMOJI_MAP = {
     'rock': '✊',
     'paper': '✋',
-    'scissors': '✌️',
+    'scissors': '✌',
 }
 
 EMOJI_FONT_PATH = '/System/Library/Fonts/Apple Color Emoji.ttc'
 EMOJI_SIZE = 200
 
 
-def _render_emoji_to_surface(emoji_char, size=EMOJI_SIZE):
-    """Render a single emoji to a pygame Surface using Pillow."""
+def _render_emoji_to_surface(emoji_char, fallback_text, size=EMOJI_SIZE):
+    """Render emoji via Apple Color Emoji font, falling back to plain text label."""
     canvas_size = size + 40
     img = Image.new('RGBA', (canvas_size, canvas_size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -37,9 +36,11 @@ def _render_emoji_to_surface(emoji_char, size=EMOJI_SIZE):
         font = ImageFont.truetype(EMOJI_FONT_PATH, size)
         draw.text((20, 20), emoji_char, font=font, embedded_color=True)
     except Exception:
-        # Fallback: draw text label
-        fallback = ImageFont.load_default()
-        draw.text((20, 20), emoji_char, font=fallback, fill=(220, 220, 240, 255))
+        try:
+            fallback_font = ImageFont.load_default(size=40)
+        except TypeError:
+            fallback_font = ImageFont.load_default()
+        draw.text((20, size // 2), fallback_text, font=fallback_font, fill=(220, 220, 240, 255))
     data = img.tobytes('raw', 'RGBA')
     return pygame.image.fromstring(data, img.size, 'RGBA')
 
@@ -50,8 +51,9 @@ def _generate_sprites(assets_dir):
     surfaces = {}
     for name, emoji in EMOJI_MAP.items():
         path = os.path.join(assets_dir, f'{name}.png')
-        surf = _render_emoji_to_surface(emoji)
-        pygame.image.save(surf, path)
+        surf = _render_emoji_to_surface(emoji, name.upper())
+        if not os.path.exists(path):
+            pygame.image.save(surf, path)
         surfaces[name] = surf
     return surfaces
 
@@ -63,12 +65,11 @@ class GameUI:
         pygame.display.set_caption('RPS Bot — Press SPACE to play')
         self._clock = pygame.time.Clock()
 
-        self._font_lg = pygame.font.SysFont('helveticaneue', 72, bold=True)
+        self._font_lg = pygame.font.SysFont('helveticaneue', 48, bold=True)
         self._font_md = pygame.font.SysFont('helveticaneue', 36)
         self._font_sm = pygame.font.SysFont('helveticaneue', 22)
 
         self._sprites = _generate_sprites(assets_dir)
-        self._cam_surf = None  # updated each frame
 
     def process_events(self):
         """Return list of pygame events this frame."""
