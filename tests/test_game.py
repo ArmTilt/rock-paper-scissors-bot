@@ -136,3 +136,28 @@ def test_space_during_result_starts_new_round():
     g._now = lambda: 3.2
     g.on_space()
     assert g.state == State.COUNTDOWN
+
+
+def test_exact_confidence_threshold_counts():
+    g = make_game(now=0.0)
+    g.on_space()
+    g._now = lambda: 3.1
+    g.update(None, 0.0, None)  # enter THROW_WINDOW
+
+    g._now = lambda: 3.15
+    g.update('rock', 0.70, 'paper')  # exactly at threshold
+    assert g.state == State.RESULT
+
+
+def test_space_during_void_starts_new_round():
+    g = make_game(now=0.0)
+    g.on_space()
+    g._now = lambda: 3.1
+    g.update(None, 0.0, None)   # enter THROW_WINDOW
+    g._now = lambda: 5.2
+    g.update(None, 0.0, None)   # timeout → VOID
+    assert g.state == State.VOID
+
+    g._now = lambda: 5.3
+    g.on_space()
+    assert g.state == State.COUNTDOWN

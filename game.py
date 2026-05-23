@@ -49,6 +49,8 @@ class GameStateMachine:
                 if elapsed >= beat_time:
                     self.countdown_label = label
             if elapsed >= 3.0:
+                # countdown_label stays as 'SHOOT!' through THROW_WINDOW intentionally
+                # (cleared when gesture detected or timeout)
                 self.state = State.THROW_WINDOW
                 self._t = now
 
@@ -58,7 +60,7 @@ class GameStateMachine:
                 self.user_move = gesture
                 self.bot_move = bot_counter
                 self.rounds += 1
-                self.bot_wins += 1
+                self.bot_wins += 1  # bot wins every round by design
                 self.state = State.RESULT
                 self._t = now
                 self.countdown_label = ''
