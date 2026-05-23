@@ -22,8 +22,8 @@ def main():
         if not ret:
             frame = None
 
-        # Detect hand every frame (cheap on M3)
-        landmarks, gesture, confidence, annotated = detector.process(frame) if frame is not None else (None, None, 0.0, frame)
+        # Detect every frame — MediaPipe is fast enough at 30fps
+        _, gesture, confidence, annotated = detector.process(frame) if frame is not None else (None, None, 0.0, frame)
         bot_counter = COUNTER_MOVES.get(gesture) if gesture else None
 
         # Handle pygame events
