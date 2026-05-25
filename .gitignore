@@ -4,3 +4,9 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 assets/*.png
+__pycache__/
+*.py[cod]
+*.task
+.DS_Store
+venv/
+.env
